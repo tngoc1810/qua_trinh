@@ -32,15 +32,6 @@ Tôi là **Nguyễn Thái Ngọc**, hiện đang theo đuổi con đường **Bl
 
 ---
 
-
-## Thống kê GitHub
-
-<div align="center">
-  <img src="https://github-readme-stats.vercel.app/api?username=tngoc1810&show_icons=true&theme=radical" alt="Ngọc's GitHub stats" height="192px"/>
-  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=tngoc1810&layout=compact&theme=radical" alt="Top Langs" height="192px"/>
-</div>
-
-
 <br>
 <p align="center">
   <i>"Học tập là một quá trình không ngừng nghỉ."</i>
