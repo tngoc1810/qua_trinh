@@ -488,4 +488,323 @@ Security Access Check
    │
    ▼
 ALLOW / DENY
-``
+```
+
+Process Object là kiểu như khi tôi chạy: notepad.exe
+
+người dùng thường nghĩ: Windows mở file Notepad
+
+Nhưng Windows phải tạo và quản lý một process.
+
+Mental model:
+```
+notepad.exe
+     │
+     ▼
+  PROCESS
+     │
+     ├── PID
+     ├── Threads
+     ├── Token
+     ├── Virtual address space
+     ├── Handles
+     └── nhiều trạng thái khác
+```
+Process không chỉ là file .exe.
+
+File: C:\Windows\System32\notepad.exe là executable trên disk.
+
+Process:
+```
+notepad.exe
+PID 5320
+```
+
+là instance đang chạy được Windows quản lý.
+
+Một file thì có thể tạo nhiều process, vd:
+
+```
+notepad.exe → PID 1000
+notepad.exe → PID 2000
+notepad.exe → PID 3000
+```
+Vì thế File != Process
+
+Khi Windows tạo process, process có một access token đại diện cho security context của nó.
+
+```
+PROCESS
+   │
+   └── ACCESS TOKEN
+          │
+          ├── User SID
+          ├── Group SIDs
+          ├── Privileges
+          ├── Integrity Level
+          └── các thông tin security khác
+```
+
+Thẻ căn cước và thông tin quyền hạn mà Windows dùng khi đánh giá các yêu cầu truy cập của process
+
+Token thực tế là một cấu trúc security của Windows
+
+PowerShell yêu cầu truy cập một resource:
+
+```
+PowerShell
+     │
+     ▼
+Token
+     │
+     ▼
+Windows security check
+```
+Windows nó quan tâm tới security context của process.
+
+Hai `process` cùng `user` nhưng `security context` không nhất thiết giống nhau hoàn toàn
+
+Ví dụ:
+
+```
+Alice
+ │
+ ├── powershell.exe
+ │      Integrity = Medium
+ │
+ └── powershell.exe
+        Integrity = High
+```
+
+cùng user nhưng khác security context
+
+SID xác định `security principal`, không nên chỉ nhìn `username` là `Alice`  vì Windows security thực sự làm việc với SID và các security principals
+
+
+
+Token có thể chứa các group memberships, nếu một process thuộc user có membership đặc biệt, khả năng truy cập của process có thể khác process của một user thông thường.
+
+Blue Team cần quan tâm `Process này có những quyền đặc biệt nào` và  `Quyền đó có liên quan tới hành động đang điều tra không`
+
+Token có security integrity information. Nó giúp Windows áp dụng Mandatory Integrity Control.Nếu thấy High Integrity không đồng nghĩa malicious
+
+ví dụ
+
+```
+Administrator tool
+→ High
+```
+là hoàn toàn bth
+
+Giờ sẽ học đến `Handle`
+
+Ví dụ nếu process muốn làm việc với một object
+
+```
+Process A
+   │
+   │ "Tôi muốn làm việc với File X"
+   ▼
+Windows Object Manager
+   │
+   ▼
+File Object
+```
+
+Windows có thể cung cấp một handle cho Process A.
+
+```
+
+Process A
+   │
+   └── Handle 0x1234
+             │
+             ▼
+          File Object
+
+```
+Kiểu hiểu đơn giản nó là một reference mà process sử dụng để tương tác với kernel object
+
+Handle nó ko phải là object
+```
+File Object
+    │
+    ├── Handle 0x1000 → Process A
+    └── Handle 0x1050 → Process B
+```
+
+Chỗ mà `Token` với `Handle` gặp nhau
+
+Giả sử:
+
+```
+Process A
+User = Alice
+Token = Token A
+     │
+     │ request access
+     ▼
+Process B
+```
+Nếu được phép:
+
+```
+Process A
+   ↓
+Handle
+   ↓
+Process B
+```
+
+Nếu ko thì: ACCESS DENIED
+
+Để hiểu access check sâu hơn thì mình sẽ học về `Security Descriptor`
+
+```
+OBJECT
+  │
+  └── Security Descriptor
+          │
+          ├── Owner
+          ├── DACL
+          └── SACL
+```
+
+`DACL` là kiểu như nó chứa các ACE quy định ai được hoặc ko được thực hiện những loại access nào.
+
+ví dụ để hiểu concept:
+
+```
+File X
+ │
+ └── DACL
+       │
+       ├── Alice → READ
+       ├── Bob   → READ + WRITE
+       └── Guest → DENY
+```
+
+Giờ đến Access Check
+
+```
+Process
+   │
+   └── Token
+        │
+        ├── User SID
+        ├── Groups
+        ├── Privileges
+        └── Integrity
+                 │
+                 ▼
+             ACCESS CHECK
+                 ▲
+                 │
+        Security Descriptor
+                 │
+                DACL
+                 │
+                 ▼
+          Target Object
+```
+Win đánh giá requests dựa trên các security rules 
+
+```
+Authentication
+      ↓
+Identity
+      ↓
+Token
+      ↓
+Authorization
+      ↓
+Access Check
+      ↓
+Allow / Deny
+
+```
+
+Thấy alert `Suspicious process access` thì tư duy
+
+```
+WHO?
+  ↓
+Caller process?
+  ↓
+Caller user?
+  ↓
+Caller token?
+  ↓
+Caller integrity?
+  ↓
+Target process?
+  ↓
+Requested/granted access?
+  ↓
+Parent process?
+  ↓
+Command line?
+  ↓
+Path?
+  ↓
+Signer?
+  ↓
+What happened next?
+```
+
+Kiểu như khi thấy bth:
+```
+powershell.exe
+Integrity = Medium
+```
+Sau elevation:
+```
+powershell.exe
+Integrity = High
+```
+Thì phải tự hỏi process này đã được elevated trong context nào
+
+Giờ ghép lại hoàn chỉnh
+
+```
+                 USER
+                   │
+                   ▼
+                PROCESS
+                   │
+                   ▼
+                 TOKEN
+                   │
+       ┌───────────┼────────────┐
+       ▼           ▼            ▼
+     SID         GROUPS      PRIVILEGES
+       │
+       └──────────────┐
+                      ▼
+               INTEGRITY LEVEL
+                      │
+                      ▼
+                 ACCESS REQUEST
+                      │
+                      ▼
+              ┌───────────────┐
+              │  ACCESS CHECK │
+              └───────┬───────┘
+                      │
+            ┌─────────┴─────────┐
+            ▼                   ▼
+    Security Descriptor       Token
+            │
+            ▼
+           DACL
+            │
+            ▼
+       Target Object
+            │
+            ▼
+       ALLOW / DENY
+            │
+            ▼
+          HANDLE
+```
+
