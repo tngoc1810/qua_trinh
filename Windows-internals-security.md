@@ -580,8 +580,6 @@ cùng user nhưng khác security context
 
 SID xác định `security principal`, không nên chỉ nhìn `username` là `Alice`  vì Windows security thực sự làm việc với SID và các security principals
 
-
-
 Token có thể chứa các group memberships, nếu một process thuộc user có membership đặc biệt, khả năng truy cập của process có thể khác process của một user thông thường.
 
 Blue Team cần quan tâm `Process này có những quyền đặc biệt nào` và  `Quyền đó có liên quan tới hành động đang điều tra không`
@@ -671,6 +669,8 @@ OBJECT
 ```
 
 `DACL` là kiểu như nó chứa các ACE quy định ai được hoặc ko được thực hiện những loại access nào.
+
+`SALC` là kiểu Access nào cần được audit
 
 ví dụ để hiểu concept:
 
@@ -808,3 +808,208 @@ Giờ ghép lại hoàn chỉnh
           HANDLE
 ```
 
+Process cần có security identity kiểu cần biết process này hoạt động dưới identity nào, một cơ chế quan trọng gọi là Access Token
+
+model:
+
+```
+Process Object
+      │
+      ▼
+   Access Token
+      │
+      ├── User SID
+      ├── Group SIDs
+      ├── Privileges
+      └── Integrity Level
+```
+Khi nói với Handle thì:
+
+```
+PROCESS
+   │
+   │ "Tôi muốn access Object này"
+   ▼
+ACCESS CHECK
+   │
+   ├── Token
+   │     ├── User SID
+   │     ├── Group SIDs
+   │     └── Privileges
+   │
+   └── Object Security
+         └── DACL
+              │
+              ▼
+          ALLOW / DENY
+              │
+          nếu ALLOW
+              ▼
+           HANDLE
+```
+
+Có một handle tới process khác không tự động có nghĩa là malicious ( Task Manager, debugger, EDR, phần mềm quản trị hệ thống... cũng có thể cần truy cập process khác,...)
+
+Token chứa `security identity`.`DACL` không phải là Token.`DACL` là `security rules` của target object.`Access Check` mới là quá trình Windows sử dụng thông tin đó để quyết định access.
+
+**Privilege** là một capability được Windows định nghĩa, được gắn với security token.Ví dụ một token có thể chứa các privileges nhất định,
+
+Nó trả lời một loại câu hỏi khác là Process,token này có special privilege nào mà Windows có thể sử dụng trong các operation đặc biệt
+
+Phân biệt : 
+
+```
+Permission
+→ quyền đối với object theo security rules
+
+Privilege
+→ special right trong security context
+```
+
+Windows có rất nhiều privilege nhưng mình không cần phải học thuộc tất cả.Chỉ cần hiểu Privilege là một capability đặc biệt trong security context và một số privilege có thể làm tăng đáng kể khả năng của process.
+
+`SeDebugPrivilege` là một privilege đặc biệt liên quan đến khả năng debug hoặc access các process khác trong những trường hợp mà privilege này được áp dụng.
+
+Ví dụ khi đang điều tra mà thấy :
+
+```
+Process:
+suspicious.exe
+
+User:
+CORP\Alice
+
+Integrity:
+High
+
+Privilege:
+SeDebugPrivilege
+```
+Thì ko được bảo là Malware luôn mà phải điều tra theo flow `Process,User,Integrity,Privileges,Parent,Command Line,Path,Target processes,Network,FilesTimeline,...`
+
+Giờ phân biệt các foundation để sau này điều tra dễ hơn:
+
+`User, SID`	Thằng nào?
+`Group`	nhóm nào?
+`Token`	Windows mang security identity nào cho process?
+`Privilege`	Có capabilities nào?
+`Integrity Level`	Process đang ở integrity level nào?
+`DACL`	Có được access resource này không?
+`SACL`	Access này có được audit không?
+`Handle`	Process dùng reference nào để làm việc với object?
+
+Sau này khi điều tra SOC thì phải biết : 
+```
+┌────────────────────────────┐
+│ PROCESS SECURITY CONTEXT   │
+├────────────────────────────┤
+│ User SID                   │
+│ Groups                     │
+│ Privileges                 │
+│ Integrity                  │
+│ Parent                     │
+│ Command Line               │
+│ Path                       │
+│ Signer                     │
+│ Start Time                 │
+└────────────────────────────┘
+```
+
+xong rồi phải biết ghép với các `Network,Files,Registry,Child Processes,Authentication,Timeline,Business Context ( cái này là kiểu như toi là IT thì truy cập powershell cũng gọi là bth chứ ko đáng ngờ lắm )`
+
+Này mới là `SOC investigation`
+
+Tổng hợp lại model
+
+```
+                WINDOWS
+                   │
+                   ▼
+              APPLICATION
+                   │
+                   ▼
+               WIN32 API
+                   │
+                   ▼
+              NTDLL / API
+                   │
+                   ▼
+                SYSCALL
+                   │
+                   ▼
+                KERNEL
+                   │
+             ┌─────┴─────┐
+             ▼           ▼
+          PROCESS      OBJECTS
+             │
+             ▼
+           TOKEN
+       ┌─────┼──────────┐
+       ▼     ▼          ▼
+      SID  GROUPS   PRIVILEGES
+                       │
+                  INTEGRITY
+             │
+             ▼
+        ACCESS CHECK
+          ┌────┴────┐
+          ▼         ▼
+        DACL       SACL
+          │         │
+       Allow/     Audit
+        Deny        │
+                    ▼
+                TELEMETRY
+                    │
+                    ▼
+                   SOC
+```
+
+## 🎯 Mini SOC Investigation | bài kiểm tra cuối Chapter 1
+
+```
+HOST: WIN-CLIENT-07
+
+09:41:52
+User: CORP\Alice
+Login successful
+
+09:42:03
+WINWORD.EXE started
+
+09:42:17
+WINWORD.EXE
+    ↓
+powershell.exe
+PID: 4812
+Integrity: High
+
+09:42:19
+powershell.exe
+    ↓
+created: C:\Users\Alice\AppData\Local\Temp\update.exe
+
+09:42:22
+update.exe
+    ↓
+network connection: 203.0.113.50:443
+
+09:42:28
+update.exe
+    ↓
+created new Windows service
+```
+```text
+1. Những gì ở đây là Observed facts?
+
+2. Điểm nào khiến bạn muốn investigate sâu hơn?
+
+3. Với powershell.exe, bạn muốn kiểm tra những field/pivot nào?
+
+4. Với update.exe, bạn muốn kiểm tra những gì?
+
+5. Bạn sẽ xây timeline như thế nào?
+
+6. Hiện tại bạn có đủ evidence để kết luận malicious chưa? Nếu chưa, bạn còn thiếu evidence gì?
+```
