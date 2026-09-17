@@ -966,50 +966,46 @@ Tổng hợp lại model
                    SOC
 ```
 
-## 🎯 Mini SOC Investigation | bài kiểm tra cuối Chapter 1
+**Tổng kết với ví dụ tôi đang làm SOC Analyst ( hiện tại thất nghiệp )**
+
+Ví dụ thấy tngoc mở notepad 
 
 ```
-HOST: WIN-CLIENT-07
-
-09:41:52
-User: CORP\Alice
-Login successful
-
-09:42:03
-WINWORD.EXE started
-
-09:42:17
-WINWORD.EXE
-    ↓
-powershell.exe
-PID: 4812
-Integrity: High
-
-09:42:19
-powershell.exe
-    ↓
-created: C:\Users\Alice\AppData\Local\Temp\update.exe
-
-09:42:22
-update.exe
-    ↓
-network connection: 203.0.113.50:443
-
-09:42:28
-update.exe
-    ↓
-created new Windows service
+tngoc
+ ↓
+notepad.exe
+ ↓
+Win32 API
+ ↓
+ntdll
+ ↓
+syscall
+ ↓
+Kernel
+ ↓
+File Object
+ ↓
+NTFS / Storage
 ```
-```text
-1. Những gì ở đây là Observed facts?
 
-2. Điểm nào khiến bạn muốn investigate sâu hơn?
+Lúc này tôi sẽ tự hỏi là: Ai, cái gì, như nào, ở đâu, tại sao lại như v, các security context nào, telemetry cái gì, chuyện gì sẽ xảy ra tiếp theo,...
 
-3. Với powershell.exe, bạn muốn kiểm tra những field/pivot nào?
+**Who**: tôi sẽ nhìn vào User SID, Group SIDs, Privileges, Integrity Level,.v.v.. Kiểu tôi sẽ tự hỏi là User là ai, SID là gì, User thuộc group nào, Có privileged group không, Process có High hay System Integrity này kia không, có special privileges không
 
-4. Với update.exe, bạn muốn kiểm tra những gì?
+**What**: Process đang làm cái gì, Process thường có ( PID, PPID, Parent, User, Token, Integrity, Image path, Command line, Signature, Start time,... ).Kiểu như không nhìn process ví dụ powershell mà kết luận nó là malware mà phải tự hỏi, thằng nào chạy nó, chạy command gì, chạy từ path nào, chạy dưới user nào, intergrity như nào, chuyện gì xảy ra sau đó, .... 
 
-5. Bạn sẽ xây timeline như thế nào?
+**How**: nhớ là API khác Eventlog, telemetry có thể thu thập qua nhiều cơ chế ví dụ như EDR, ETW, Sysmon
 
-6. Hiện tại bạn có đủ evidence để kết luận malicious chưa? Nếu chưa, bạn còn thiếu evidence gì?
-```
+**What Telemetry**: Kiểu như này là SOC phải hiểu data source nữa chứ không phải là chỉ học thuộc Event ID
+
+**Where**: Xem file ở đâu, đường dẫn như nào, coi network dis src nó ra sao, port, hostname, event src....
+
+**When**: Phải biết dựng timeline ( nối tụi nó lại thành một chuỗi thì điều tra sẽ tổng quan và có cái nhìn toàn diện hơn, thời gian cũng có thể biết được nó có hợp lệ hay ko )
+
+**Why**: Phải luôn tự đặt câu hỏi tại sao trong các cuộc điều tra ( tại sao nó lại kết nối ra ip này, nó tạo services để làm gì, nó có được phép không,.. ) 
+
+**What next**: phải biết đặt giả thuyết chuyện gì xảy ra tiếp theo chứ không dừng lại ở những gì thấy, ví dụ điều tra thêm registry child này kia coi nó có làm gì tiếp theo không
+
+Quan trọng là phải biết có mảnh ghép này thì phải đi đặt giả thuyết tìm mảnh ghép khác
+
+
